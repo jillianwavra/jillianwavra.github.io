@@ -61,3 +61,8 @@
       width: 1010px;
       height: 50px;
   }
+  ul li {
+  display: inline;
+  list-style: none;
+  margin-right: 15px;
+}
