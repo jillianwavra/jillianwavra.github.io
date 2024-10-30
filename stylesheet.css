@@ -16,12 +16,12 @@ p {
   
   nav {
       background-color: #bacbf2;
-      padding: 10px;
-      margin: 10px;
+     
   }
   
   
   h1 {
+   text-align: center;
       color: #e9f3fe;
       font-family: Georgia, serif;
       font-size: 50px;
