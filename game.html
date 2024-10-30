@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- [Previous head and style sections remain the same] -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Hockey</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        
+        #gameCanvas {
+            background-color: #fff;
+            border: 2px solid #333;
+            border-radius: 10px;
+            margin: 20px;
+        }
+        
+        .score-board {
+            display: flex;
+            gap: 40px;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Air Hockey</h1>
+    <div class="score-board">
+        <div>Player 1: <span id="player1Score">0</span></div>
+        <div>Player 2: <span id="player2Score">0</span></div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const puck = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 15,
+            speedX: 0,
+            speedY: 0,
+            maxSpeed: 18
+        };
+
+        const paddle1 = {
+            x: 50,
+            y: canvas.height / 2,
+            radius: 25,
+            score: 0
+        };
+
+        const paddle2 = {
+            x: canvas.width - 50,
+            y: canvas.height / 2,
+            radius: 25,
+            score: 0,
+            targetX: canvas.width - 50,
+            targetY: canvas.height / 2,
+            state: 'defend',
+            missChance: 0.3, // 30% chance to intentionally miss
+            lastMistakeTime: 0,
+            mistakeInterval: 2000, // Time between possible mistakes (2 seconds)
+            mistakeOffset: 0 // Used for intentional misses
+        };
+
+        const goals = {
+            width: 10,
+            height: 150,
+            leftX: 0,
+            rightX: canvas.width - 10,
+            get topY() { return (canvas.height - this.height) / 2; },
+            get bottomY() { return (canvas.height + this.height) / 2; }
+        };
+
+        let friction = 0.992;
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            if (mouseX < canvas.width / 2) {
+                paddle1.x = Math.max(paddle1.radius, Math.min(canvas.width / 2 - paddle1.radius, mouseX));
+                paddle1.y = Math.max(paddle1.radius, Math.min(canvas.height - paddle1.radius, mouseY));
+            }
+        });
+
+        function moveAI() {
+            const currentTime = Date.now();
+            const distanceFromGoal = canvas.width - puck.x;
+            const puckSpeedTowardsGoal = puck.speedX > 0;
+            const moveSpeed = 5; // Slightly reduced base speed
+            
+            // Randomly decide to make a mistake
+            if (currentTime - paddle2.lastMistakeTime > paddle2.mistakeInterval) {
+                if (Math.random() < paddle2.missChance) {
+                    // Set a random offset for intentional miss
+                    paddle2.mistakeOffset = (Math.random() - 0.5) * 100;
+                    paddle2.lastMistakeTime = currentTime;
+                } else {
+                    paddle2.mistakeOffset = 0;
+                }
+            }
+
+            // Decide AI state with more room for error
+            if (distanceFromGoal > canvas.width / 2 || (puckSpeedTowardsGoal && puck.speedX > 5)) {
+                paddle2.state = 'defend';
+                // Sometimes defend too far back
+                paddle2.targetX = canvas.width - (80 + Math.random() * 40);
+            } else if (Math.abs(puck.speedX) < 5 && distanceFromGoal < canvas.width / 3) {
+                paddle2.state = 'attack';
+                // Sometimes miss the puck in attack mode
+                paddle2.targetX = Math.min(puck.x + 30 + (Math.random() * 20), canvas.width - 50);
+            }
+
+            // Add intentional offset to targeting
+            let targetY = puck.y + paddle2.mistakeOffset;
+            
+            // Sometimes delay reaction or make wrong prediction
+            if (paddle2.state === 'defend') {
+                if (Math.random() < 0.2) { // 20% chance to predict wrongly
+                    targetY += (Math.random() - 0.5) * 60;
+                }
+            } else {
+                targetY = puck.y + puck.speedY * (Math.random() * 2); // Random prediction multiplier
+            }
+
+            paddle2.targetY = targetY;
+
+            // Move towards target with variable speed
+            const dx = paddle2.targetX - paddle2.x;
+            const dy = paddle2.targetY - paddle2.y;
+            
+            // Sometimes move slower than necessary
+            const currentSpeed = moveSpeed * (0.7 + Math.random() * 0.3);
+            
+            if (Math.abs(dx) > currentSpeed) {
+                paddle2.x += dx > 0 ? currentSpeed : -currentSpeed;
+            } else {
+                paddle2.x = paddle2.targetX;
+            }
+
+            if (Math.abs(dy) > currentSpeed) {
+                paddle2.y += dy > 0 ? currentSpeed : -currentSpeed;
+            } else {
+                paddle2.y = paddle2.targetY;
+            }
+
+            // Constrain paddle2 movement
+            paddle2.x = Math.max(canvas.width / 2 + paddle2.radius, 
+                               Math.min(canvas.width - paddle2.radius, paddle2.x));
+            paddle2.y = Math.max(paddle2.radius, 
+                               Math.min(canvas.height - paddle2.radius, paddle2.y));
+        }
+
+        // [Rest of the functions (checkCollision, checkGoal, updatePuck, resetPuck, draw) remain the same]
+        function checkCollision(circle1, circle2) {
+            const dx = circle1.x - circle2.x;
+            const dy = circle1.y - circle2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < circle1.radius + circle2.radius;
+        }
+
+        function checkGoal() {
+            if (puck.x - puck.radius < goals.width && 
+                puck.y > goals.topY && 
+                puck.y < goals.bottomY) {
+                paddle2.score++;
+                document.getElementById('player2Score').textContent = paddle2.score;
+                return true;
+            } else if (puck.x + puck.radius > goals.rightX && 
+                      puck.y > goals.topY && 
+                      puck.y < goals.bottomY) {
+                paddle1.score++;
+                document.getElementById('player1Score').textContent = paddle1.score;
+                return true;
+            }
+            return false;
+        }
+
+        function updatePuck() {
+            puck.speedX *= friction;
+            puck.speedY *= friction;
+
+            puck.x += puck.speedX;
+            puck.y += puck.speedY;
+
+            if (puck.y - puck.radius < 0 || puck.y + puck.radius > canvas.height) {
+                puck.speedY = -puck.speedY;
+                puck.y = puck.y - puck.radius < 0 ? puck.radius : canvas.height - puck.radius;
+            }
+
+            if (puck.x - puck.radius < 0) {
+                if (puck.y < goals.topY || puck.y > goals.bottomY) {
+                    puck.speedX = -puck.speedX;
+                    puck.x = puck.radius;
+                }
+            } else if (puck.x + puck.radius > canvas.width) {
+                if (puck.y < goals.topY || puck.y > goals.bottomY) {
+                    puck.speedX = -puck.speedX;
+                    puck.x = canvas.width - puck.radius;
+                }
+            }
+
+            if (checkGoal()) {
+                resetPuck();
+                return;
+            }
+
+            if (checkCollision(puck, paddle1) || checkCollision(puck, paddle2)) {
+                const paddle = checkCollision(puck, paddle1) ? paddle1 : paddle2;
+                
+                const dx = puck.x - paddle.x;
+                const dy = puck.y - paddle.y;
+                const angle = Math.atan2(dy, dx);
+                
+                const speed = Math.sqrt(puck.speedX * puck.speedX + puck.speedY * puck.speedY);
+                // Reduced AI hit power and added randomness
+                const hitPower = paddle === paddle2 ? 
+                    2.5 + Math.random() : // Random hit power for AI
+                    3; // Consistent hit power for player
+                puck.speedX = Math.cos(angle) * Math.min(speed + hitPower, puck.maxSpeed);
+                puck.speedY = Math.sin(angle) * Math.min(speed + hitPower, puck.maxSpeed);
+                
+                puck.x = paddle.x + Math.cos(angle) * (paddle.radius + puck.radius);
+                puck.y = paddle.y + Math.sin(angle) * (paddle.radius + puck.radius);
+            }
+        }
+
+        function resetPuck() {
+            puck.x = canvas.width / 2;
+            puck.y = canvas.height / 2;
+            const startSpeed = 7;
+            const angle = Math.random() * Math.PI * 2;
+            puck.speedX = Math.cos(angle) * startSpeed;
+            puck.speedY = Math.sin(angle) * startSpeed;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw center line
+            ctx.beginPath();
+            ctx.setLineDash([5, 15]);
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.strokeStyle = '#333';
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw goals
+            ctx.fillStyle = '#444';
+            ctx.fillRect(0, goals.topY, goals.width, goals.height);
+            ctx.fillRect(goals.rightX, goals.topY, goals.width, goals.height);
+
+            // Draw goal lines
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(goals.width, goals.topY);
+            ctx.lineTo(goals.width, goals.bottomY);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(goals.rightX, goals.topY);
+            ctx.lineTo(goals.rightX, goals.bottomY);
+            ctx.stroke();
+
+            // Draw puck
+            ctx.beginPath();
+            ctx.arc(puck.x, puck.y, puck.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#333';
+            ctx.fill();
+
+            // Draw paddles
+            ctx.beginPath();
+            ctx.arc(paddle1.x, paddle1.y, paddle1.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff4444';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(paddle2.x, paddle2.y, paddle2.radius, 0, Math.PI * 2);
+            ctx.fillStyle = paddle2.state === 'attack' ? '#ff4444' : '#4444ff';
+            ctx.fill();
+        }
+
+        function update() {
+            moveAI();
+            updatePuck();
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        resetPuck();
+        update();
+    </script>
+</body>
+</html>
