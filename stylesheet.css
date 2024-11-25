@@ -76,3 +76,6 @@ p {
 div {
         all: revert;
  }
+span {
+   color: #e9f3fe;
+}
