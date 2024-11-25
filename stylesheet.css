@@ -73,3 +73,6 @@ p {
 .inlineList {
    display: inline
  }
+div {
+        all: revert;
+ }
